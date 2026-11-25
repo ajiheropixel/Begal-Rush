@@ -22,10 +22,10 @@ export default defineConfig(() => {
         ],
         manifest: {
           id: '/',
-          name: 'BEGAL RUSH — Ride · Survive · Win',
-          short_name: 'Begal Rush',
+          name: 'BEGAL RUSUH — Ride · Survive · Win',
+          short_name: 'Begal Rusuh',
           description:
-            '3D arcade motorcycle racing, survival, and vehicle combat game on the streets of Indonesia.',
+            'Game balap motor & aksi survival 3D jalanan malam Indonesia. Lawan komplotan begal rusuh, selamatkan warga, modifikasi 8 motor dan 8 senjata, serta taklukkan rintangan jalanan.',
           theme_color: '#0B0D10',
           background_color: '#0B0D10',
           display: 'standalone',

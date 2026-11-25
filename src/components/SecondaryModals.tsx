@@ -19,7 +19,7 @@ export const PauseModal: React.FC<PauseModalProps> = ({
     <div className="fixed inset-0 z-30 bg-black/75 flex items-center justify-center p-4">
       <div className="w-full max-w-sm hud-panel-amber hud-chamfer p-6 text-center">
         <div className="text-[10px] font-mono-tabular uppercase tracking-[0.2em] text-amber-300">
-          BEGAL RUSH · PAUSED
+          BEGAL RUSUH · PAUSED
         </div>
         <h2 className="font-display text-2xl font-bold text-white mt-1">ISTIRAHAT SEJENAK</h2>
         <p className="text-xs text-slate-400 mt-1">
@@ -349,6 +349,21 @@ export const SecondaryModals: React.FC<SecondaryModalsProps> = ({
               <div>Gas / Rem: W / S · NOS: Shift / N · Lompat: Space</div>
               <div>Pukul/Parry: F · Lock-Shot: R · Jebakan: T · EMP: E</div>
               <div>Klakson/Lure: Q · Panggil Polisi (Ult): P / V</div>
+            </div>
+
+            <div className="bg-slate-900/95 border border-yellow-400/25 rounded-lg p-3 flex items-center gap-3">
+              <img
+                src="/pwa-192x192.png"
+                alt="Ikon BEGAL RUSUH"
+                referrerPolicy="no-referrer"
+                className="w-12 h-12 rounded-xl border border-yellow-400/40 shrink-0 object-cover"
+              />
+              <div className="min-w-0">
+                <div className="font-display font-bold text-sm text-yellow-400">BEGAL RUSUH</div>
+                <p className="text-[11px] text-slate-300 leading-snug mt-0.5">
+                  Game balap motor &amp; aksi survival 3D jalanan malam Indonesia. Lawan komplotan begal rusuh, selamatkan warga, modifikasi 8 motor dan 8 senjata, serta taklukkan rintangan jalanan.
+                </p>
+              </div>
             </div>
 
             <PWAInstallButton variant="card" showFallbackHint />

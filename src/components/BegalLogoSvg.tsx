@@ -4,10 +4,10 @@ export const BegalLogoSvg: React.FC<{ compact?: boolean }> = ({ compact = false 
   return (
     <div className="inline-flex flex-col select-none">
       <svg
-        viewBox="0 0 420 94"
-        className={compact ? 'h-10 w-auto' : 'h-16 sm:h-20 w-auto'}
+        viewBox="0 0 448 94"
+        className={compact ? 'h-10 w-auto max-w-full' : 'h-12 sm:h-16 w-auto max-w-full'}
         role="img"
-        aria-label="BEGAL RUSH"
+        aria-label="BEGAL RUSUH"
       >
         <defs>
           <linearGradient id="begalYellow" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -33,7 +33,7 @@ export const BegalLogoSvg: React.FC<{ compact?: boolean }> = ({ compact = false 
           BEGAL
         </text>
 
-        {/* RUSH accent wordmark */}
+        {/* RUSUH accent wordmark */}
         <text
           x="236"
           y="53"
@@ -44,11 +44,11 @@ export const BegalLogoSvg: React.FC<{ compact?: boolean }> = ({ compact = false 
           fontSize="50"
           letterSpacing="3"
         >
-          RUSH
+          RUSUH
         </text>
 
         {/* Razor underline & tagline */}
-        <polygon points="62,64 404,64 396,68 58,68" fill="#EF4444" />
+        <polygon points="62,64 436,64 428,68 58,68" fill="#EF4444" />
         <text
           x="64"
           y="86"

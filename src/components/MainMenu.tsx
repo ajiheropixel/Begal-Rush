@@ -211,13 +211,25 @@ export const MainMenu: React.FC<MainMenuProps> = ({
             <span className="text-slate-400">{save.totalRuns} RUNS</span>
           </div>
 
-          <div
-            onClick={handleLogoTap}
-            className="cursor-pointer transition-transform active:scale-[0.99]"
-            title="BEGAL RUSH"
-          >
-            <BegalLogoSvg />
+          <div className="flex items-center gap-3">
+            <img
+              src="/pwa-192x192.png"
+              alt="Ikon BEGAL RUSUH"
+              referrerPolicy="no-referrer"
+              className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl border border-yellow-400/45 shadow-md shrink-0 object-cover"
+            />
+            <div
+              onClick={handleLogoTap}
+              className="cursor-pointer transition-transform active:scale-[0.99] min-w-0"
+              title="BEGAL RUSUH"
+            >
+              <BegalLogoSvg />
+            </div>
           </div>
+
+          <p className="mt-2.5 text-xs text-slate-300/90 leading-relaxed">
+            Balap motor &amp; aksi survival malam Indonesia — hajar komplotan begal rusuh, tolong warga, taklukkan rintangan jalanan, dan kumpulkan 8 motor &amp; 8 senjata.
+          </p>
 
           {secretMessage && (
             <div className="mt-2 px-3 py-1.5 bg-yellow-400/15 border border-yellow-400/40 rounded text-xs font-mono-tabular font-bold text-yellow-300">

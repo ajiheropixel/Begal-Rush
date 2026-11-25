@@ -676,7 +676,7 @@ export const EASTER_EGGS: EasterEggDef[] = [
   {
     id: 'egg_sultan',
     title: 'Sultan Jalanan',
-    hint: 'Ketuk logo BEGAL RUSH 5x atau masukkan Konami Code di Menu Utama.',
+    hint: 'Ketuk logo BEGAL RUSUH 5x atau masukkan Konami Code di Menu Utama.',
     rewardCoins: 250,
   },
   {
