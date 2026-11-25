@@ -1,0 +1,6 @@
+{
+  "name": "BEGAL RUSH",
+  "description": "3D arcade motorcycle racing, survival, and vehicle combat game on the streets of Indonesia. Ride, survive, and fight off street gangs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
