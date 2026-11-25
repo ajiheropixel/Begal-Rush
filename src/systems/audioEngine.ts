@@ -22,6 +22,12 @@ class AudioEngine {
     musicVolume: 0.45,
     graphicsQuality: 'high',
     touchControls: 'auto',
+    touchSwapped: false,
+    touchScale: 'normal',
+    touchVerticalOffset: 1,
+    touchSideOffset: 0,
+    touchPadLayout: 'ergo',
+    hudAlertMode: 'compact',
   };
 
   public unlock(): void {

@@ -1,4 +1,4 @@
-export type GameScreen = 'intro' | 'menu' | 'garage' | 'playing' | 'paused' | 'gameover';
+export type GameScreen = 'intro' | 'menu' | 'garage' | 'playing' | 'paused' | 'spectate' | 'gameover';
 
 export type SubModal = 'none' | 'missions' | 'achievements' | 'settings' | 'multiplayer';
 
@@ -123,15 +123,28 @@ export interface AchievementDef {
   rewardExp: number;
 }
 
+export type TouchButtonScale = 'compact' | 'normal' | 'large';
+export type TouchVerticalOffset = 0 | 1 | 2 | 3;
+export type TouchSideOffset = 0 | 1 | 2 | 3;
+export type TouchPadLayout = 'ergo' | 'classic';
+export type HudAlertMode = 'compact' | 'minimal' | 'off';
+
 export interface GameSettings {
   muted: boolean;
   sfxVolume: number; // 0..1
   musicVolume: number; // 0..1
   graphicsQuality: 'low' | 'medium' | 'high';
   touchControls: 'auto' | 'always' | 'off';
+  touchSwapped: boolean;
+  touchScale: TouchButtonScale;
+  touchVerticalOffset: TouchVerticalOffset;
+  touchSideOffset: TouchSideOffset;
+  touchPadLayout: TouchPadLayout;
+  hudAlertMode: HudAlertMode;
 }
 
 export interface SaveData {
+  riderName: string;
   coins: number;
   exp: number;
   level: number;

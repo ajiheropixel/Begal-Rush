@@ -1,29 +1,59 @@
 import React, { useState } from 'react';
-import { Award, CheckCircle2, Lock, Shield, Sparkles, Target, Users, X } from 'lucide-react';
+import {
+  ArrowLeftRight,
+  Award,
+  CheckCircle2,
+  Lock,
+  RotateCcw,
+  Shield,
+  SlidersHorizontal,
+  Smartphone,
+  Sparkles,
+  Target,
+  Users,
+  X,
+} from 'lucide-react';
 import { ACHIEVEMENTS, EASTER_EGGS, MISSIONS } from '../data/gameCatalog';
-import { GameSettings, SaveData, SubModal } from '../types/game';
+import {
+  GameSettings,
+  HudAlertMode,
+  SaveData,
+  SubModal,
+  TouchButtonScale,
+  TouchPadLayout,
+  TouchSideOffset,
+  TouchVerticalOffset,
+} from '../types/game';
 import { PWAInstallButton } from './PWAInstallButton';
 
 interface PauseModalProps {
+  isMultiplayer?: boolean;
   onResume: () => void;
   onRestart: () => void;
+  onOpenSettings?: () => void;
   onQuitToMenu: () => void;
 }
 
 export const PauseModal: React.FC<PauseModalProps> = ({
+  isMultiplayer = false,
   onResume,
   onRestart,
+  onOpenSettings,
   onQuitToMenu,
 }) => {
   return (
     <div className="fixed inset-0 z-30 bg-black/75 flex items-center justify-center p-4">
       <div className="w-full max-w-sm hud-panel-amber hud-chamfer p-6 text-center">
         <div className="text-[10px] font-mono-tabular uppercase tracking-[0.2em] text-amber-300">
-          BEGAL RUSUH · PAUSED
+          BEGAL RUSUH · {isMultiplayer ? 'MULTIPLAYER AKTIF' : 'PAUSED'}
         </div>
-        <h2 className="font-display text-2xl font-bold text-white mt-1">ISTIRAHAT SEJENAK</h2>
+        <h2 className="font-display text-2xl font-bold text-white mt-1">
+          {isMultiplayer ? 'MENU CEPAT' : 'ISTIRAHAT SEJENAK'}
+        </h2>
         <p className="text-xs text-slate-400 mt-1">
-          Siapkan refleks sebelum kembali menerobos malam.
+          {isMultiplayer
+            ? 'Balapan tetap berjalan secara real-time bersama rider lain.'
+            : 'Siapkan refleks sebelum kembali menerobos malam.'}
         </p>
 
         <div className="mt-5 space-y-2.5">
@@ -34,19 +64,31 @@ export const PauseModal: React.FC<PauseModalProps> = ({
           >
             LANJUTKAN BALAP
           </button>
-          <button
-            type="button"
-            onClick={onRestart}
-            className="w-full min-h-[44px] bg-slate-800 hover:bg-slate-700 text-white font-semibold text-sm rounded-lg cursor-pointer whitespace-nowrap"
-          >
-            Ulangi Perjalanan
-          </button>
+          {onOpenSettings && (
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              className="w-full min-h-[44px] bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/50 text-sky-200 font-semibold text-sm rounded-lg cursor-pointer flex items-center justify-center gap-2 whitespace-nowrap"
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+              Atur Posisi Tombol &amp; Setelan
+            </button>
+          )}
+          {!isMultiplayer && (
+            <button
+              type="button"
+              onClick={onRestart}
+              className="w-full min-h-[44px] bg-slate-800 hover:bg-slate-700 text-white font-semibold text-sm rounded-lg cursor-pointer whitespace-nowrap"
+            >
+              Ulangi Perjalanan
+            </button>
+          )}
           <button
             type="button"
             onClick={onQuitToMenu}
             className="w-full min-h-[44px] bg-slate-900 hover:bg-slate-800 border border-white/12 text-slate-300 font-semibold text-sm rounded-lg cursor-pointer whitespace-nowrap"
           >
-            Kembali ke Menu Utama
+            {isMultiplayer ? 'Keluar dari Room & Kembali' : 'Kembali ke Menu Utama'}
           </button>
         </div>
       </div>
@@ -62,6 +104,32 @@ interface SecondaryModalsProps {
   onResetSave: () => void;
 }
 
+const PREVIEW_BOTTOM_PAD: Record<TouchVerticalOffset, string> = {
+  0: 'pb-0',
+  1: 'pb-1.5',
+  2: 'pb-3',
+  3: 'pb-5',
+};
+
+const PREVIEW_SIDE_PAD: Record<TouchSideOffset, string> = {
+  0: 'px-0',
+  1: 'px-1.5',
+  2: 'px-3.5',
+  3: 'px-6',
+};
+
+const PREVIEW_STEER_SIZE: Record<TouchButtonScale, string> = {
+  compact: 'w-5 h-5',
+  normal: 'w-6 h-6',
+  large: 'w-7 h-7',
+};
+
+const PREVIEW_ACTION_W: Record<TouchButtonScale, string> = {
+  compact: 'w-14',
+  normal: 'w-16',
+  large: 'w-20',
+};
+
 export const SecondaryModals: React.FC<SecondaryModalsProps> = ({
   modal,
   save,
@@ -71,10 +139,16 @@ export const SecondaryModals: React.FC<SecondaryModalsProps> = ({
 }) => {
   const [achTab, setAchTab] = useState<'achievements' | 'secrets'>('achievements');
 
-  if (modal === 'none') return null;
+  if (modal === 'none' || modal === 'multiplayer') return null;
+
+  const touchScale: TouchButtonScale = save.settings.touchScale ?? 'normal';
+  const touchVerticalOffset: TouchVerticalOffset = save.settings.touchVerticalOffset ?? 1;
+  const touchSideOffset: TouchSideOffset = save.settings.touchSideOffset ?? 0;
+  const touchPadLayout: TouchPadLayout = save.settings.touchPadLayout ?? 'ergo';
+  const hudAlertMode: HudAlertMode = save.settings.hudAlertMode ?? 'compact';
 
   return (
-    <div className="fixed inset-0 z-30 bg-black/80 flex items-start sm:items-center justify-center pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] px-3 sm:p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-40 bg-black/80 flex items-start sm:items-center justify-center pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] px-3 sm:p-4 overflow-y-auto">
       <div className="w-full max-w-xl hud-panel-amber hud-chamfer p-4 sm:p-6 text-slate-100 my-auto">
         <div className="flex items-center justify-between border-b border-white/10 pb-3">
           <h2 className="font-display text-xl font-bold text-white flex items-center gap-2">
@@ -89,11 +163,6 @@ export const SecondaryModals: React.FC<SecondaryModalsProps> = ({
               </>
             )}
             {modal === 'settings' && 'PENGATURAN & KONTROL'}
-            {modal === 'multiplayer' && (
-              <>
-                <Users className="w-5 h-5 text-rose-400" /> MULTIPLAYER CO-OP (ROADMAP)
-              </>
-            )}
           </h2>
           <button
             type="button"
@@ -235,39 +304,8 @@ export const SecondaryModals: React.FC<SecondaryModalsProps> = ({
           </div>
         )}
 
-        {modal === 'multiplayer' && (
-          <div className="mt-4 space-y-4 text-sm text-slate-300">
-            <div className="bg-rose-950/40 border border-rose-500/35 rounded-lg p-3.5 text-xs text-rose-200 leading-relaxed">
-              Mode co-op daring disiapkan untuk fase jaringan berikutnya. Mode Solo Survival sudah
-              aktif penuh beserta NPC warga, bos Begal Pick-Up, dan 8 Easter Egg interaktif.
-            </div>
-
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div className="bg-slate-900/95 border border-white/10 rounded-lg p-3.5">
-                <div className="font-display font-bold text-yellow-400 text-sm">
-                  PERAN 1: PENGEMUDI
-                </div>
-                <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
-                  Mengendalikan manuver motor, gas, rem, NOS turbo, lompatan, serta menghindari lalu
-                  lintas malam.
-                </p>
-              </div>
-              <div className="bg-slate-900/95 border border-white/10 rounded-lg p-3.5">
-                <div className="font-display font-bold text-sky-400 text-sm flex items-center gap-1.5">
-                  <Shield className="w-4 h-4" />
-                  PERAN 2: PELINDUNG
-                </div>
-                <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
-                  Boncenger aktif yang membidik Flare Shot, menangkis serangan jarak dekat, dan
-                  meledakkan gelombang EMP.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
         {modal === 'settings' && (
-          <div className="mt-4 space-y-4 text-sm">
+          <div className="mt-4 space-y-4 text-sm max-h-[75vh] overflow-y-auto pr-1 hud-scroll">
             <div>
               <div className="flex justify-between text-xs text-slate-300 mb-1">
                 <span>Volume SFX</span>
@@ -324,23 +362,280 @@ export const SecondaryModals: React.FC<SecondaryModalsProps> = ({
               </div>
             </div>
 
-            <div className="flex items-center justify-between gap-4">
-              <span className="text-xs text-slate-300">Tombol Sentuh Android</span>
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <span className="text-xs text-slate-300">Notifikasi Atas Saat Balap</span>
               <div className="flex gap-1.5">
-                {(['auto', 'always', 'off'] as const).map((mode) => (
+                {(
+                  [
+                    { id: 'compact', label: 'Ringkas' },
+                    { id: 'minimal', label: 'Minimal' },
+                    { id: 'off', label: 'Sembunyi' },
+                  ] as const
+                ).map((opt) => (
                   <button
-                    key={mode}
+                    key={opt.id}
                     type="button"
-                    onClick={() => onUpdateSettings({ touchControls: mode })}
-                    className={`min-h-[34px] px-3 py-1.5 rounded-md text-xs font-semibold capitalize cursor-pointer whitespace-nowrap ${
-                      save.settings.touchControls === mode
+                    onClick={() => onUpdateSettings({ hudAlertMode: opt.id })}
+                    className={`min-h-[34px] px-2.5 py-1.5 rounded-md text-xs font-semibold cursor-pointer whitespace-nowrap ${
+                      hudAlertMode === opt.id
                         ? 'bg-yellow-400 text-slate-950'
                         : 'bg-slate-800 text-slate-300'
                     }`}
                   >
-                    {mode}
+                    {opt.label}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {/* Android Touch Button Position & Layout Customizer */}
+            <div className="bg-slate-900/95 border border-amber-400/25 rounded-xl p-3.5 space-y-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2 text-xs font-display font-bold text-amber-300">
+                  <Smartphone className="w-4 h-4" />
+                  POSISI TOMBOL ANDROID
+                </div>
+                <div className="flex gap-1.5">
+                  {(['auto', 'always', 'off'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => onUpdateSettings({ touchControls: mode })}
+                      className={`min-h-[30px] px-2.5 py-1 rounded-md text-[11px] font-semibold capitalize cursor-pointer whitespace-nowrap ${
+                        save.settings.touchControls === mode
+                          ? 'bg-yellow-400 text-slate-950'
+                          : 'bg-slate-800 text-slate-300'
+                      }`}
+                    >
+                      {mode}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Live Phone Screen Mini-Preview */}
+              <div className="h-28 bg-slate-950 border border-white/15 rounded-lg p-2 flex flex-col justify-between overflow-hidden">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="w-10 h-3 rounded-xs bg-slate-800 border border-white/10" />
+                  <div className="flex flex-col items-center gap-0.5">
+                    <div className="w-9 h-2.5 rounded-xs bg-slate-800 border border-amber-400/30" />
+                    {hudAlertMode !== 'off' && (
+                      <div className="px-2 py-0.5 rounded-full bg-slate-900/90 border border-amber-400/50 text-[8px] font-mono-tabular text-amber-200 whitespace-nowrap">
+                        {hudAlertMode === 'minimal' ? 'NOTIF BAHAYA' : 'NOTIF RINGKAS'}
+                      </div>
+                    )}
+                  </div>
+                  <div className="w-10 h-3 rounded-xs bg-slate-800 border border-white/10" />
+                </div>
+
+                <div
+                  className={`flex items-end justify-between ${
+                    save.settings.touchSwapped ? 'flex-row-reverse' : ''
+                  } ${PREVIEW_BOTTOM_PAD[touchVerticalOffset]} ${PREVIEW_SIDE_PAD[touchSideOffset]}`}
+                >
+                  {/* Steering preview */}
+                  <div className="flex flex-col gap-0.5">
+                    <div className="h-2 rounded-xs bg-emerald-500/35 border border-emerald-400/50" />
+                    <div className="flex gap-0.5">
+                      <div
+                        className={`${PREVIEW_STEER_SIZE[touchScale]} rounded bg-slate-800 border border-white/25 flex items-center justify-center text-[8px] text-slate-300`}
+                      >
+                        ◀
+                      </div>
+                      <div
+                        className={`${PREVIEW_STEER_SIZE[touchScale]} rounded bg-slate-800 border border-white/25 flex items-center justify-center text-[8px] text-slate-300`}
+                      >
+                        ▶
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Action pad preview */}
+                  {touchPadLayout === 'ergo' ? (
+                    <div className={`${PREVIEW_ACTION_W[touchScale]} flex flex-col gap-0.5`}>
+                      <div className="grid grid-cols-4 gap-0.5">
+                        <div className="h-1.5 rounded-xs bg-sky-500/40" />
+                        <div className="h-1.5 rounded-xs bg-red-500/40" />
+                        <div className="h-1.5 rounded-xs bg-cyan-500/40" />
+                        <div className="h-1.5 rounded-xs bg-slate-700" />
+                      </div>
+                      <div className="grid grid-cols-3 gap-0.5">
+                        <div className="h-2 rounded-xs bg-red-900/80" />
+                        <div className="h-2 rounded-xs bg-yellow-400/40" />
+                        <div className="h-2 rounded-xs bg-slate-700" />
+                      </div>
+                      <div className="grid grid-cols-2 gap-0.5">
+                        <div className="h-3.5 rounded-xs bg-emerald-500/80 flex items-center justify-center text-[7px] font-bold text-white">
+                          GAS
+                        </div>
+                        <div className="h-3.5 rounded-xs bg-yellow-400 flex items-center justify-center text-[7px] font-bold text-slate-950">
+                          PKL
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className={`${PREVIEW_ACTION_W[touchScale]} grid grid-cols-3 gap-0.5`}>
+                      <div className="h-2 rounded-xs bg-sky-500/40" />
+                      <div className="h-2 rounded-xs bg-red-500/40" />
+                      <div className="h-2 rounded-xs bg-cyan-500/40" />
+                      <div className="h-2 rounded-xs bg-slate-700" />
+                      <div className="h-2 rounded-xs bg-yellow-400/40" />
+                      <div className="h-2 rounded-xs bg-slate-700" />
+                      <div className="h-2.5 rounded-xs bg-red-900/80" />
+                      <div className="h-2.5 rounded-xs bg-emerald-500/80" />
+                      <div className="h-2.5 rounded-xs bg-yellow-400" />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Pad Layout Style */}
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs text-slate-300">Susunan Pad Aksi</span>
+                <div className="flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onUpdateSettings({ touchPadLayout: 'ergo' })}
+                    className={`min-h-[32px] px-2.5 py-1 rounded-md text-xs font-semibold cursor-pointer whitespace-nowrap ${
+                      touchPadLayout === 'ergo'
+                        ? 'bg-yellow-400 text-slate-950'
+                        : 'bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    Nyaman (Gas Besar)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onUpdateSettings({ touchPadLayout: 'classic' })}
+                    className={`min-h-[32px] px-2.5 py-1 rounded-md text-xs font-semibold cursor-pointer whitespace-nowrap ${
+                      touchPadLayout === 'classic'
+                        ? 'bg-yellow-400 text-slate-950'
+                        : 'bg-slate-800 text-slate-300'
+                    }`}
+                  >
+                    Klasik 3×3
+                  </button>
+                </div>
+              </div>
+
+              {/* Swap Left / Right */}
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs text-slate-300">Posisi Kiri-Kanan</span>
+                <button
+                  type="button"
+                  onClick={() => onUpdateSettings({ touchSwapped: !save.settings.touchSwapped })}
+                  className={`min-h-[32px] px-3 py-1 rounded-md text-xs font-semibold cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                    save.settings.touchSwapped
+                      ? 'bg-sky-400 text-slate-950'
+                      : 'bg-slate-800 text-slate-200 border border-white/10'
+                  }`}
+                >
+                  <ArrowLeftRight className="w-3.5 h-3.5" />
+                  {save.settings.touchSwapped ? 'Ditukar (Belok Kanan)' : 'Normal (Belok Kiri)'}
+                </button>
+              </div>
+
+              {/* Button Scale */}
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs text-slate-300">Ukuran Tombol</span>
+                <div className="flex gap-1.5">
+                  {(
+                    [
+                      { id: 'compact', label: 'Kecil' },
+                      { id: 'normal', label: 'Sedang' },
+                      { id: 'large', label: 'Besar' },
+                    ] as const
+                  ).map((sz) => (
+                    <button
+                      key={sz.id}
+                      type="button"
+                      onClick={() => onUpdateSettings({ touchScale: sz.id })}
+                      className={`min-h-[32px] px-2.5 py-1 rounded-md text-xs font-semibold cursor-pointer whitespace-nowrap ${
+                        touchScale === sz.id
+                          ? 'bg-yellow-400 text-slate-950'
+                          : 'bg-slate-800 text-slate-300'
+                      }`}
+                    >
+                      {sz.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Vertical Elevation */}
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs text-slate-300">Tinggi dari Bawah</span>
+                <div className="flex gap-1.5">
+                  {(
+                    [
+                      { id: 0, label: 'Rapat' },
+                      { id: 1, label: 'Sedang' },
+                      { id: 2, label: 'Naik' },
+                      { id: 3, label: 'Tinggi' },
+                    ] as const
+                  ).map((lvl) => (
+                    <button
+                      key={lvl.id}
+                      type="button"
+                      onClick={() => onUpdateSettings({ touchVerticalOffset: lvl.id })}
+                      className={`min-h-[32px] px-2.5 py-1 rounded-md text-xs font-semibold cursor-pointer whitespace-nowrap ${
+                        touchVerticalOffset === lvl.id
+                          ? 'bg-yellow-400 text-slate-950'
+                          : 'bg-slate-800 text-slate-300'
+                      }`}
+                    >
+                      {lvl.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Horizontal Edge Offset */}
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs text-slate-300">Jarak dari Pinggir</span>
+                <div className="flex gap-1.5">
+                  {(
+                    [
+                      { id: 0, label: 'Pinggir' },
+                      { id: 1, label: 'Masuk 1' },
+                      { id: 2, label: 'Masuk 2' },
+                      { id: 3, label: 'Tengah' },
+                    ] as const
+                  ).map((lvl) => (
+                    <button
+                      key={lvl.id}
+                      type="button"
+                      onClick={() => onUpdateSettings({ touchSideOffset: lvl.id })}
+                      className={`min-h-[32px] px-2.5 py-1 rounded-md text-xs font-semibold cursor-pointer whitespace-nowrap ${
+                        touchSideOffset === lvl.id
+                          ? 'bg-yellow-400 text-slate-950'
+                          : 'bg-slate-800 text-slate-300'
+                      }`}
+                    >
+                      {lvl.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={() =>
+                    onUpdateSettings({
+                      touchSwapped: false,
+                      touchScale: 'normal',
+                      touchVerticalOffset: 1,
+                      touchSideOffset: 0,
+                      touchPadLayout: 'ergo',
+                      hudAlertMode: 'compact',
+                    })
+                  }
+                  className="min-h-[30px] px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-semibold flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Reset Posisi Default
+                </button>
               </div>
             </div>
 

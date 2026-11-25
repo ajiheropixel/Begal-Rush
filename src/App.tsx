@@ -30,14 +30,24 @@ import {
   persistSaveData,
 } from './systems/saveSystem';
 import { audioEngine } from './systems/audioEngine';
+import { ConnectionState, multiplayerClient } from './systems/multiplayerClient';
 import { BegalRushEngine } from './three/BegalRushEngine';
 import { MainMenu } from './components/MainMenu';
 import { SponsorIntro } from './components/SponsorIntro';
 import { GarageModal } from './components/GarageModal';
 import { GameplayHud } from './components/GameplayHud';
 import { GameOverModal } from './components/GameOverModal';
+import { MultiplayerModal } from './components/MultiplayerModal';
 import { PauseModal, SecondaryModals } from './components/SecondaryModals';
 import { OfflineIndicator } from './components/PWAInstallButton';
+import type {
+  MultiplayerMode,
+  MultiplayerTargetDistance,
+  PlayerActionKind,
+  PlayerLoadout,
+  PublicRoomSummary,
+  RoomSnapshot,
+} from './types/multiplayer';
 
 const INITIAL_HUD: HudState = {
   speedKmh: 0,
@@ -150,10 +160,40 @@ export default function App() {
   subModalRef.current = subModal;
 
   const [hud, setHud] = useState<HudState>(INITIAL_HUD);
+  const hudRef = useRef<HudState>(hud);
+  hudRef.current = hud;
   const [runSummary, setRunSummary] = useState<RunSummary | null>(null);
+  const runFinalizedRef = useRef(false);
   const [contextLost, setContextLost] = useState(false);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Multiplayer state
+  const [mpConnState, setMpConnState] = useState<ConnectionState>(() =>
+    multiplayerClient.getConnectionState()
+  );
+  const [mpClientId, setMpClientId] = useState<string | null>(() =>
+    multiplayerClient.getClientId()
+  );
+  const [mpRoom, setMpRoom] = useState<RoomSnapshot | null>(() =>
+    multiplayerClient.getCurrentRoom()
+  );
+  const mpRoomRef = useRef<RoomSnapshot | null>(mpRoom);
+  mpRoomRef.current = mpRoom;
+  const [mpPublicRooms, setMpPublicRooms] = useState<PublicRoomSummary[]>([]);
+  const [mpError, setMpError] = useState<string | null>(null);
+  const [mpInviteCode] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    return (
+      new URLSearchParams(window.location.search)
+        .get('room')
+        ?.trim()
+        .toUpperCase()
+        .slice(0, 6) || ''
+    );
+  });
+  const inviteHandledRef = useRef(false);
+
   const canFullscreen =
     typeof document !== 'undefined' && Boolean(document.documentElement.requestFullscreen);
 
@@ -182,19 +222,35 @@ export default function App() {
     persistSaveData(next);
   }, []);
 
-  const handleGameOver = useCallback(
-    (stats: {
-      distanceMeters: number;
-      enemiesEngaged: number;
-      enemiesDefeated: number;
-      civiliansSaved: number;
-      civiliansIgnored: number;
-      karmaCap: KarmaCapStatus;
-      coinsEarnedDistance: number;
-      coinsEarnedCombat: number;
-      nosUses: number;
-      bossDefeated: boolean;
-    }) => {
+  const buildLocalLoadout = useCallback((overrideName?: string): PlayerLoadout => {
+    const s = saveRef.current;
+    return {
+      name: overrideName ?? s.riderName,
+      bikeId: s.selectedBikeId,
+      meleeId: s.selectedMeleeWeapon,
+      rangedId: s.selectedRangedWeapon,
+    };
+  }, []);
+
+  const finalizeRunSummary = useCallback(
+    (
+      stats: {
+        distanceMeters: number;
+        enemiesEngaged: number;
+        enemiesDefeated: number;
+        civiliansSaved: number;
+        civiliansIgnored: number;
+        karmaCap: KarmaCapStatus;
+        coinsEarnedDistance: number;
+        coinsEarnedCombat: number;
+        nosUses: number;
+        bossDefeated: boolean;
+      },
+      activeRoom: RoomSnapshot | null
+    ) => {
+      if (runFinalizedRef.current) return;
+      runFinalizedRef.current = true;
+
       const current = saveRef.current;
       const next: SaveData = {
         ...current,
@@ -225,6 +281,18 @@ export default function App() {
       for (const a of newlyUnlockedAchievements) {
         coinsEarnedMissions += a.rewardCoins;
         bonusExp += a.rewardExp;
+      }
+
+      if (activeRoom) {
+        if (activeRoom.mode === 'coop') {
+          coinsEarnedMissions += Math.round(
+            (stats.coinsEarnedDistance + stats.coinsEarnedCombat) * 0.25
+          );
+        }
+        if (activeRoom.winnerId && activeRoom.winnerId === multiplayerClient.getClientId()) {
+          coinsEarnedMissions += 150;
+          bonusExp += 120;
+        }
       }
 
       // Penalty based ONLY on engaged begals, capped so player never loses entire wallet
@@ -264,9 +332,44 @@ export default function App() {
         newlyCompletedMissions,
         newlyUnlockedAchievements,
       });
-      setScreen('gameover');
     },
     [commitSave]
+  );
+
+  const handleGameOver = useCallback(
+    (stats: {
+      distanceMeters: number;
+      enemiesEngaged: number;
+      enemiesDefeated: number;
+      civiliansSaved: number;
+      civiliansIgnored: number;
+      karmaCap: KarmaCapStatus;
+      coinsEarnedDistance: number;
+      coinsEarnedCombat: number;
+      nosUses: number;
+      bossDefeated: boolean;
+    }) => {
+      const activeMp = mpRoomRef.current;
+      finalizeRunSummary(stats, activeMp);
+
+      if (activeMp && activeMp.status === 'playing') {
+        multiplayerClient.sendCrash(
+          stats.distanceMeters,
+          stats.enemiesDefeated,
+          stats.civiliansSaved
+        );
+        const myId = multiplayerClient.getClientId();
+        const othersAlive = activeMp.players.some((p) => p.id !== myId && p.alive);
+        if (othersAlive) {
+          engineRef.current?.setScreenMode('spectate');
+          setScreen('spectate');
+          return;
+        }
+      }
+
+      setScreen('gameover');
+    },
+    [finalizeRunSummary]
   );
 
   const handleEasterEggFound = useCallback(
@@ -292,6 +395,11 @@ export default function App() {
       onGameOver: handleGameOver,
       onContextLost: (lost) => setContextLost(lost),
       onEasterEggFound: handleEasterEggFound,
+      onLocalAction: (action: PlayerActionKind) => {
+        if (mpRoomRef.current?.status === 'playing') {
+          multiplayerClient.sendAction(action);
+        }
+      },
     });
 
     const initialBike = getBikeById(saveRef.current.selectedBikeId);
@@ -317,6 +425,12 @@ export default function App() {
   }, [handleEasterEggFound, handleGameOver]);
 
   const startSoloRun = useCallback(() => {
+    if (mpRoomRef.current) {
+      multiplayerClient.leaveRoom();
+      mpRoomRef.current = null;
+      setMpRoom(null);
+      engineRef.current?.clearRemotePlayers();
+    }
     audioEngine.unlock();
     audioEngine.playUiClick();
     const s = saveRef.current;
@@ -324,6 +438,7 @@ export default function App() {
     const effective = computeEffectiveStats(bike, s.upgrades[bike.id]);
     const melee = getMeleeWeaponById(s.selectedMeleeWeapon);
     const ranged = getRangedWeaponById(s.selectedRangedWeapon);
+    runFinalizedRef.current = false;
     setRunSummary(null);
     setSubModal('none');
     setScreen('playing');
@@ -333,13 +448,17 @@ export default function App() {
   const handlePause = useCallback(() => {
     if (screenRef.current !== 'playing') return;
     engineRef.current?.clearAllInputs();
-    engineRef.current?.setScreenMode('paused');
+    if (!mpRoomRef.current) {
+      engineRef.current?.setScreenMode('paused');
+    }
     setScreen('paused');
   }, []);
 
   const handleResume = useCallback(() => {
     if (screenRef.current !== 'paused') return;
-    engineRef.current?.setScreenMode('playing');
+    if (!mpRoomRef.current) {
+      engineRef.current?.setScreenMode('playing');
+    }
     setScreen('playing');
   }, []);
 
@@ -359,6 +478,177 @@ export default function App() {
     engineRef.current?.setScreenMode('menu');
     setScreen('menu');
   }, []);
+
+  const handleLeaveMultiplayer = useCallback(() => {
+    multiplayerClient.leaveRoom();
+    mpRoomRef.current = null;
+    setMpRoom(null);
+    engineRef.current?.clearRemotePlayers();
+    handleReturnMenu();
+  }, [handleReturnMenu]);
+
+  // Multiplayer WebSocket event subscriptions
+  useEffect(() => {
+    const unsubConn = multiplayerClient.onConnectionChange((state, cid) => {
+      setMpConnState(state);
+      setMpClientId(cid);
+    });
+    const unsubRooms = multiplayerClient.onRoomsList((rooms) => {
+      setMpPublicRooms(rooms);
+    });
+    const unsubErr = multiplayerClient.onError((msg) => {
+      setMpError(msg);
+    });
+    const unsubAction = multiplayerClient.onAction((ev) => {
+      engineRef.current?.triggerRemoteAction(ev.playerId, ev.action, ev.playerName);
+    });
+    const unsubSnap = multiplayerClient.onSnapshot((nextRoom) => {
+      const prevRoom = mpRoomRef.current;
+      mpRoomRef.current = nextRoom;
+      setMpRoom(nextRoom);
+
+      if (!nextRoom) {
+        engineRef.current?.clearRemotePlayers();
+        if (screenRef.current === 'spectate') {
+          setScreen('gameover');
+        }
+        return;
+      }
+
+      if (nextRoom.status === 'playing') {
+        const myId = multiplayerClient.getClientId();
+        engineRef.current?.syncRemotePlayers(nextRoom.players, myId);
+
+        if (!prevRoom || prevRoom.status !== 'playing') {
+          const me = nextRoom.players.find((p) => p.id === myId);
+          const slotIndex = me?.slotIndex ?? 0;
+          const s = saveRef.current;
+          const bike = getBikeById(s.selectedBikeId);
+          const effective = computeEffectiveStats(bike, s.upgrades[bike.id]);
+          const melee = getMeleeWeaponById(s.selectedMeleeWeapon);
+          const ranged = getRangedWeaponById(s.selectedRangedWeapon);
+
+          runFinalizedRef.current = false;
+          audioEngine.unlock();
+          setRunSummary(null);
+          setSubModal('none');
+          setScreen('playing');
+          engineRef.current?.startNewRun(bike, effective, melee, ranged, slotIndex);
+          const initialTelemetry = engineRef.current?.getMultiplayerTelemetry();
+          if (initialTelemetry) {
+            multiplayerClient.sendTelemetry(initialTelemetry);
+          }
+        }
+        return;
+      }
+
+      if (nextRoom.status === 'finished' && prevRoom?.status === 'playing') {
+        if (!runFinalizedRef.current) {
+          const t = engineRef.current?.getMultiplayerTelemetry();
+          const h = hudRef.current;
+          const dist = Math.max(t?.distanceMeters ?? 0, h.distanceMeters);
+          const kills = Math.max(t?.enemiesDefeated ?? 0, h.enemiesDefeated);
+          const saved = Math.max(t?.civiliansSaved ?? 0, h.civiliansSaved);
+          const distCoins = Math.floor(dist / 100) * ECONOMY_CONFIG.coinsPer100m;
+          const combatCoins = Math.max(0, h.runCoins - distCoins);
+          finalizeRunSummary(
+            {
+              distanceMeters: dist,
+              enemiesEngaged: h.enemiesEngaged,
+              enemiesDefeated: kills,
+              civiliansSaved: saved,
+              civiliansIgnored: h.civiliansIgnored,
+              karmaCap: t?.karmaCap ?? h.karmaCap,
+              coinsEarnedDistance: distCoins,
+              coinsEarnedCombat: combatCoins,
+              nosUses: 0,
+              bossDefeated: false,
+            },
+            nextRoom
+          );
+        }
+        audioEngine.stopEngine();
+        audioEngine.setMusicMode('menu');
+        engineRef.current?.setScreenMode('gameover');
+        setScreen('gameover');
+        return;
+      }
+
+      if (
+        nextRoom.status === 'waiting' &&
+        (screenRef.current === 'gameover' || screenRef.current === 'spectate')
+      ) {
+        audioEngine.stopEngine();
+        audioEngine.setMusicMode('menu');
+        const s = saveRef.current;
+        const bike = getBikeById(s.selectedBikeId);
+        const effective = computeEffectiveStats(bike, s.upgrades[bike.id]);
+        engineRef.current?.setSelectedWeapons(
+          getMeleeWeaponById(s.selectedMeleeWeapon),
+          getRangedWeaponById(s.selectedRangedWeapon),
+          true
+        );
+        engineRef.current?.setSelectedBike(bike, effective);
+        engineRef.current?.setScreenMode('menu');
+        setRunSummary(null);
+        setScreen('menu');
+        setSubModal('multiplayer');
+      }
+    });
+
+    return () => {
+      unsubConn();
+      unsubRooms();
+      unsubErr();
+      unsubAction();
+      unsubSnap();
+    };
+  }, [finalizeRunSummary]);
+
+  // Auto-open Multiplayer lobby if ?room= invite code is present once intro finishes
+  useEffect(() => {
+    if (mpInviteCode && !inviteHandledRef.current && screen !== 'intro') {
+      inviteHandledRef.current = true;
+      multiplayerClient.connect();
+      setSubModal('multiplayer');
+    }
+  }, [mpInviteCode, screen]);
+
+  // Connect & fetch rooms whenever Multiplayer modal opens
+  useEffect(() => {
+    if (subModal === 'multiplayer') {
+      multiplayerClient.connect();
+      multiplayerClient.requestRoomList();
+    }
+  }, [subModal]);
+
+  // Keep waiting room loadout synced when player edits bike/weapons/name
+  useEffect(() => {
+    if (mpRoom?.status === 'waiting') {
+      multiplayerClient.updateLoadout(buildLocalLoadout());
+    }
+  }, [
+    mpRoom?.status,
+    save.riderName,
+    save.selectedBikeId,
+    save.selectedMeleeWeapon,
+    save.selectedRangedWeapon,
+    buildLocalLoadout,
+  ]);
+
+  // Stream player telemetry during live multiplayer match
+  useEffect(() => {
+    if ((screen !== 'playing' && screen !== 'paused') || mpRoom?.status !== 'playing') {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      const telemetry = engineRef.current?.getMultiplayerTelemetry();
+      if (telemetry) {
+        multiplayerClient.sendTelemetry(telemetry);
+      }
+    }, 65);
+    return () => window.clearInterval(timer);
+  }, [screen, mpRoom?.status]);
 
   const handleFinishIntro = useCallback(() => {
     if (screenRef.current !== 'intro') return;
@@ -780,8 +1070,8 @@ export default function App() {
         />
       )}
 
-      {/* Active Gameplay HUD */}
-      {(screen === 'playing' || screen === 'paused') && (
+      {/* Active Gameplay HUD & Multiplayer Spectate Strip */}
+      {(screen === 'playing' || screen === 'paused' || screen === 'spectate') && (
         <GameplayHud
           hud={hud}
           settings={save.settings}
@@ -790,6 +1080,10 @@ export default function App() {
           hasMultipleRanged={save.ownedRangedWeapons.length > 1}
           canFullscreen={canFullscreen}
           isFullscreen={isFullscreen}
+          multiplayerRoom={mpRoom}
+          localPlayerId={mpClientId}
+          spectating={screen === 'spectate'}
+          onLeaveMultiplayer={handleLeaveMultiplayer}
           onToggleFullscreen={handleToggleFullscreen}
           onCycleMelee={handleCycleMelee}
           onCycleRanged={handleCycleRanged}
@@ -802,9 +1096,14 @@ export default function App() {
       {/* Pause Modal */}
       {screen === 'paused' && (
         <PauseModal
+          isMultiplayer={Boolean(mpRoom)}
           onResume={handleResume}
           onRestart={startSoloRun}
-          onQuitToMenu={handleReturnMenu}
+          onOpenSettings={() => {
+            audioEngine.playUiClick();
+            setSubModal('settings');
+          }}
+          onQuitToMenu={mpRoom ? handleLeaveMultiplayer : handleReturnMenu}
         />
       )}
 
@@ -812,13 +1111,55 @@ export default function App() {
       {screen === 'gameover' && runSummary && (
         <GameOverModal
           summary={runSummary}
+          multiplayerRoom={mpRoom}
+          localPlayerId={mpClientId}
+          onRematch={() => multiplayerClient.requestRematch()}
           onRetry={startSoloRun}
-          onMainMenu={handleReturnMenu}
+          onMainMenu={mpRoom ? handleLeaveMultiplayer : handleReturnMenu}
           onOpenGarage={handleOpenGarage}
         />
       )}
 
-      {/* Secondary Modals (Missions, Achievements, Settings, Multiplayer Roadmap) */}
+      {/* Real-time Multiplayer Lobby Modal */}
+      <MultiplayerModal
+        open={subModal === 'multiplayer'}
+        save={save}
+        connectionState={mpConnState}
+        clientId={mpClientId}
+        room={mpRoom}
+        publicRooms={mpPublicRooms}
+        initialJoinCode={mpInviteCode}
+        errorMessage={mpError}
+        onClearError={() => setMpError(null)}
+        onUpdateRiderName={(name) => {
+          const next = { ...saveRef.current, riderName: name };
+          commitSave(next);
+          if (mpRoomRef.current) {
+            multiplayerClient.updateLoadout(buildLocalLoadout(name));
+          }
+        }}
+        onClose={() => setSubModal('none')}
+        onRefreshRooms={() => multiplayerClient.requestRoomList()}
+        onCreateRoom={(
+          mode: MultiplayerMode,
+          targetDistance: MultiplayerTargetDistance,
+          isPublic: boolean
+        ) => {
+          setMpError(null);
+          multiplayerClient.createRoom(mode, targetDistance, isPublic, buildLocalLoadout());
+        }}
+        onJoinRoom={(code: string) => {
+          setMpError(null);
+          multiplayerClient.joinRoom(code, buildLocalLoadout());
+        }}
+        onLeaveRoom={() => multiplayerClient.leaveRoom()}
+        onToggleReady={() => multiplayerClient.toggleReady()}
+        onUpdateConfig={(patch) => multiplayerClient.updateConfig(patch)}
+        onSendChat={(text) => multiplayerClient.sendChat(text)}
+        onStartMatch={() => multiplayerClient.startMatch()}
+      />
+
+      {/* Secondary Modals (Missions, Achievements, Settings) */}
       <SecondaryModals
         modal={subModal}
         save={save}

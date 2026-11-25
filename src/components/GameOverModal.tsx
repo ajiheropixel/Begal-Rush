@@ -1,9 +1,24 @@
 import React from 'react';
-import { Award, Home, RotateCcw, ShieldAlert, ShieldCheck, Shield, Target, Wrench } from 'lucide-react';
+import {
+  Award,
+  Crown,
+  Home,
+  RotateCcw,
+  Shield,
+  ShieldAlert,
+  ShieldCheck,
+  Target,
+  Users,
+  Wrench,
+} from 'lucide-react';
 import { RunSummary } from '../types/game';
+import { RoomSnapshot } from '../types/multiplayer';
 
 interface GameOverModalProps {
   summary: RunSummary;
+  multiplayerRoom?: RoomSnapshot | null;
+  localPlayerId?: string | null;
+  onRematch?: () => void;
   onRetry: () => void;
   onMainMenu: () => void;
   onOpenGarage: () => void;
@@ -11,6 +26,9 @@ interface GameOverModalProps {
 
 export const GameOverModal: React.FC<GameOverModalProps> = ({
   summary,
+  multiplayerRoom = null,
+  localPlayerId = null,
+  onRematch,
   onRetry,
   onMainMenu,
   onOpenGarage,
@@ -26,18 +44,70 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
         <div className="flex items-center justify-between gap-3 border-b border-white/10 pb-4">
           <div>
             <div className="text-[11px] font-mono-tabular font-bold tracking-[0.18em] uppercase text-rose-400">
-              MOTOR HANCUR · RUN SELESAI
+              {multiplayerRoom
+                ? `MULTIPLAYER ${multiplayerRoom.mode === 'coop' ? 'CO-OP' : 'DUEL'} · SELESAI`
+                : 'MOTOR HANCUR · RUN SELESAI'}
             </div>
-            <h2 className="font-display text-3xl font-bold text-white mt-0.5 tracking-wide">
-              LAPORAN PERJALANAN
+            <h2 className="font-display text-2xl sm:text-3xl font-bold text-white mt-0.5 tracking-wide">
+              {multiplayerRoom ? 'HASIL PODIUM RONDE' : 'LAPORAN PERJALANAN'}
             </h2>
+            {multiplayerRoom?.finishReason && (
+              <p className="text-xs text-amber-300 mt-1">{multiplayerRoom.finishReason}</p>
+            )}
           </div>
           {summary.isNewBest && (
-            <div className="px-3 py-1 bg-yellow-400 text-slate-950 font-display font-bold text-xs rounded">
+            <div className="px-3 py-1 bg-yellow-400 text-slate-950 font-display font-bold text-xs rounded shrink-0">
               REKOR BARU
             </div>
           )}
         </div>
+
+        {/* Multiplayer Podium Standings */}
+        {multiplayerRoom && (
+          <div className="mt-4 bg-slate-900/95 border border-yellow-400/30 rounded-xl p-3 space-y-2">
+            <div className="text-[11px] font-display font-bold text-yellow-400 flex items-center gap-1.5">
+              <Users className="w-3.5 h-3.5" /> KLASEMEN ROOM #{multiplayerRoom.code}
+            </div>
+            <div className="space-y-1.5">
+              {[...multiplayerRoom.players]
+                .sort((a, b) => {
+                  if (a.finishOrder !== null && b.finishOrder !== null) {
+                    return a.finishOrder - b.finishOrder;
+                  }
+                  if (a.finishOrder !== null) return -1;
+                  if (b.finishOrder !== null) return 1;
+                  return b.distanceMeters - a.distanceMeters;
+                })
+                .map((p, idx) => {
+                  const isWinner = p.id === multiplayerRoom.winnerId;
+                  const isMe = p.id === localPlayerId;
+                  return (
+                    <div
+                      key={p.id}
+                      className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg border text-xs ${
+                        isWinner
+                          ? 'bg-yellow-400/15 border-yellow-400/50 text-yellow-200'
+                          : isMe
+                          ? 'bg-sky-500/15 border-sky-400/40 text-sky-100'
+                          : 'bg-slate-950/80 border-white/8 text-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-display font-bold w-5">#{idx + 1}</span>
+                        {isWinner && <Crown className="w-3.5 h-3.5 text-yellow-400 shrink-0" />}
+                        <span className="font-semibold truncate">
+                          {p.name} {isMe ? '(Kamu)' : ''}
+                        </span>
+                      </div>
+                      <div className="font-mono-tabular text-[11px] shrink-0">
+                        {p.distanceMeters}m · {p.enemiesDefeated} KO
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          </div>
+        )}
 
         {/* Core Distance & Combat Metrics */}
         <div className="grid grid-cols-3 gap-3 mt-4">
@@ -180,32 +250,53 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({
         )}
 
         {/* Actions */}
-        <div className="mt-5 grid grid-cols-3 gap-2.5">
-          <button
-            type="button"
-            onClick={onMainMenu}
-            className="min-h-[44px] px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs sm:text-sm font-semibold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
-          >
-            <Home className="w-4 h-4" />
-            Menu
-          </button>
-          <button
-            type="button"
-            onClick={onOpenGarage}
-            className="min-h-[44px] px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs sm:text-sm font-semibold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
-          >
-            <Wrench className="w-4 h-4 text-yellow-400" />
-            Garasi
-          </button>
-          <button
-            type="button"
-            onClick={onRetry}
-            className="min-h-[44px] px-3 py-2.5 bg-gradient-to-r from-yellow-400 to-amber-400 hover:from-yellow-300 hover:to-amber-300 text-slate-950 font-display font-bold text-sm rounded-lg flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
-          >
-            <RotateCcw className="w-4 h-4" />
-            GAS LAGI
-          </button>
-        </div>
+        {multiplayerRoom ? (
+          <div className="mt-5 grid grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              onClick={onMainMenu}
+              className="min-h-[44px] px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs sm:text-sm font-semibold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+            >
+              <Home className="w-4 h-4" />
+              Keluar Room
+            </button>
+            <button
+              type="button"
+              onClick={onRematch}
+              className="min-h-[44px] px-3 py-2.5 bg-gradient-to-r from-yellow-400 to-amber-400 hover:from-yellow-300 hover:to-amber-300 text-slate-950 font-display font-bold text-sm rounded-lg flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+            >
+              <RotateCcw className="w-4 h-4" />
+              REMATCH DI LOBI
+            </button>
+          </div>
+        ) : (
+          <div className="mt-5 grid grid-cols-3 gap-2.5">
+            <button
+              type="button"
+              onClick={onMainMenu}
+              className="min-h-[44px] px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs sm:text-sm font-semibold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+            >
+              <Home className="w-4 h-4" />
+              Menu
+            </button>
+            <button
+              type="button"
+              onClick={onOpenGarage}
+              className="min-h-[44px] px-3 py-2.5 bg-slate-800 hover:bg-slate-700 text-white text-xs sm:text-sm font-semibold rounded-lg flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+            >
+              <Wrench className="w-4 h-4 text-yellow-400" />
+              Garasi
+            </button>
+            <button
+              type="button"
+              onClick={onRetry}
+              className="min-h-[44px] px-3 py-2.5 bg-gradient-to-r from-yellow-400 to-amber-400 hover:from-yellow-300 hover:to-amber-300 text-slate-950 font-display font-bold text-sm rounded-lg flex items-center justify-center gap-1.5 cursor-pointer whitespace-nowrap"
+            >
+              <RotateCcw className="w-4 h-4" />
+              GAS LAGI
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

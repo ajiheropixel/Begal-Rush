@@ -32,6 +32,7 @@ export function createDefaultSave(): SaveData {
   }
 
   return {
+    riderName: 'Rider Nusantara',
     coins: 250,
     exp: 0,
     level: 1,
@@ -55,6 +56,12 @@ export function createDefaultSave(): SaveData {
       musicVolume: 0.45,
       graphicsQuality: 'high',
       touchControls: 'auto',
+      touchSwapped: false,
+      touchScale: 'normal',
+      touchVerticalOffset: 1,
+      touchSideOffset: 0,
+      touchPadLayout: 'ergo',
+      hudAlertMode: 'compact',
     },
   };
 }
@@ -119,6 +126,10 @@ export function loadSaveData(): SaveData {
         : ownedRangedWeapons[0];
 
     return {
+      riderName:
+        typeof parsed.riderName === 'string' && parsed.riderName.trim().length > 0
+          ? parsed.riderName.trim().slice(0, 18)
+          : fallback.riderName,
       coins: typeof parsed.coins === 'number' && parsed.coins >= 0 ? Math.floor(parsed.coins) : fallback.coins,
       exp: typeof parsed.exp === 'number' && parsed.exp >= 0 ? Math.floor(parsed.exp) : 0,
       level: typeof parsed.level === 'number' && parsed.level >= 1 ? Math.floor(parsed.level) : 1,
@@ -140,6 +151,37 @@ export function loadSaveData(): SaveData {
       settings: {
         ...fallback.settings,
         ...(parsed.settings ?? {}),
+        touchSwapped: Boolean(parsed.settings?.touchSwapped ?? fallback.settings.touchSwapped),
+        touchScale:
+          parsed.settings?.touchScale === 'compact' ||
+          parsed.settings?.touchScale === 'normal' ||
+          parsed.settings?.touchScale === 'large'
+            ? parsed.settings.touchScale
+            : fallback.settings.touchScale,
+        touchVerticalOffset:
+          parsed.settings?.touchVerticalOffset === 0 ||
+          parsed.settings?.touchVerticalOffset === 1 ||
+          parsed.settings?.touchVerticalOffset === 2 ||
+          parsed.settings?.touchVerticalOffset === 3
+            ? parsed.settings.touchVerticalOffset
+            : fallback.settings.touchVerticalOffset,
+        touchSideOffset:
+          parsed.settings?.touchSideOffset === 0 ||
+          parsed.settings?.touchSideOffset === 1 ||
+          parsed.settings?.touchSideOffset === 2 ||
+          parsed.settings?.touchSideOffset === 3
+            ? parsed.settings.touchSideOffset
+            : fallback.settings.touchSideOffset,
+        touchPadLayout:
+          parsed.settings?.touchPadLayout === 'ergo' || parsed.settings?.touchPadLayout === 'classic'
+            ? parsed.settings.touchPadLayout
+            : fallback.settings.touchPadLayout,
+        hudAlertMode:
+          parsed.settings?.hudAlertMode === 'compact' ||
+          parsed.settings?.hudAlertMode === 'minimal' ||
+          parsed.settings?.hudAlertMode === 'off'
+            ? parsed.settings.hudAlertMode
+            : fallback.settings.hudAlertMode,
       },
     };
   } catch {

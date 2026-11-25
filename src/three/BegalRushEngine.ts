@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import {
   BikeConfig,
+  BikeId,
   ControlInputState,
   EffectiveBikeStats,
   EnemyType,
@@ -9,9 +10,15 @@ import {
   HudState,
   KarmaCapStatus,
   MeleeWeaponDef,
+  MeleeWeaponId,
   RangedWeaponDef,
   RangedWeaponId,
 } from '../types/game';
+import type {
+  PlayerActionKind,
+  PlayerTelemetryPayload,
+  RoomPlayerInfo,
+} from '../types/multiplayer';
 import {
   DIFFICULTY_TIERS,
   ECONOMY_CONFIG,
@@ -180,6 +187,34 @@ interface Particle {
   active: boolean;
 }
 
+interface RemoteRiderVisual {
+  id: string;
+  name: string;
+  bikeId: BikeId;
+  meleeId: MeleeWeaponId;
+  rangedId: RangedWeaponId;
+  rig: MotorcycleRig;
+  labelSprite: THREE.Sprite;
+  labelCanvas: HTMLCanvasElement;
+  labelCtx: CanvasRenderingContext2D;
+  labelTexture: THREE.CanvasTexture;
+  empRing: THREE.Mesh;
+  lastHpRatio: number;
+  x: number;
+  y: number;
+  z: number;
+  targetX: number;
+  targetY: number;
+  targetZ: number;
+  speed: number;
+  lean: number;
+  nosActive: boolean;
+  isWheelie: boolean;
+  alive: boolean;
+  armSwingTimer: number;
+  empAnimTimer: number;
+}
+
 export interface EngineCallbacks {
   onHudUpdate: (hud: HudState) => void;
   onGameOver: (stats: {
@@ -196,6 +231,7 @@ export interface EngineCallbacks {
   }) => void;
   onContextLost: (lost: boolean) => void;
   onEasterEggFound?: (eggId: string, label: string, bonusCoins: number) => void;
+  onLocalAction?: (action: PlayerActionKind) => void;
 }
 
 export class BegalRushEngine {
@@ -328,6 +364,7 @@ export class BegalRushEngine {
   private coins: CoinPickup[] = [];
   private coinSpawnTimer = 1.5;
   private particles: Particle[] = [];
+  private remotePlayers = new Map<string, RemoteRiderVisual>();
 
   // Inputs
   private input: ControlInputState = {
@@ -579,6 +616,7 @@ export class BegalRushEngine {
     this.screenMode = mode;
     if (mode === 'intro' || mode === 'menu' || mode === 'garage') {
       this.clearDynamicEntities();
+      this.clearRemotePlayers();
       this.playerX = 0;
       this.playerY = 0;
       this.playerZ = 0;
@@ -601,7 +639,8 @@ export class BegalRushEngine {
     bike: BikeConfig,
     effectiveStats: EffectiveBikeStats,
     melee?: MeleeWeaponDef,
-    ranged?: RangedWeaponDef
+    ranged?: RangedWeaponDef,
+    startSlot?: number
   ): void {
     const weaponChanged =
       (melee && melee.id !== this.currentMelee.id) ||
@@ -619,7 +658,8 @@ export class BegalRushEngine {
     }
     this.clearDynamicEntities();
 
-    this.playerX = 1.45;
+    this.playerX =
+      typeof startSlot === 'number' ? LANE_CENTERS[startSlot % LANE_CENTERS.length] : 1.45;
     this.playerY = 0;
     this.playerVelY = 0;
     this.playerZ = 0;
@@ -766,6 +806,8 @@ export class BegalRushEngine {
 
     if (this.screenMode === 'playing') {
       this.updatePlaying(dt);
+    } else if (this.screenMode === 'spectate') {
+      this.updateSpectate(dt);
     } else if (this.screenMode === 'intro' || this.screenMode === 'menu' || this.screenMode === 'garage') {
       this.updateShowcase(dt);
     } else if (this.screenMode === 'paused') {
@@ -1082,6 +1124,7 @@ export class BegalRushEngine {
         this.coinsEarnedCombat += 75;
         this.setBanner('EASTER EGG: OM TELOLET OM! +75C', 2.3);
         this.callbacks.onEasterEggFound?.('egg_telolet', 'Om Telolet Om!', 75);
+        this.callbacks.onLocalAction?.('horn');
         for (const e of this.enemies) {
           if (Math.abs(e.z - this.playerZ) < 35) {
             e.stunTimer = Math.max(e.stunTimer, 1.6);
@@ -1103,6 +1146,7 @@ export class BegalRushEngine {
           this.coinsEarnedCombat += 15;
         }
         audioEngine.playHornTaunt();
+        this.callbacks.onLocalAction?.('horn');
         this.setBanner(
           luredCount > 0 ? `TAUNT LURED ${luredCount} BEGAL!` : 'TAUNT +15 STYLE',
           1.2
@@ -1113,13 +1157,16 @@ export class BegalRushEngine {
     // Combat Actions
     if (justAttack && this.attackCooldownTimer <= 0) {
       this.performMeleeAttack();
+      this.callbacks.onLocalAction?.('attack');
     }
     if (justEmp && this.empCooldownTimer <= 0) {
       this.performEmpDefense();
+      this.callbacks.onLocalAction?.('emp');
     }
     if (justRanged && this.rangedFireCooldown <= 0) {
       if (this.rangedAmmo > 0) {
         this.performRangedShot();
+        this.callbacks.onLocalAction?.('ranged');
       } else {
         this.rangedFireCooldown = 0.35;
         audioEngine.playEmptyClip();
@@ -1131,6 +1178,7 @@ export class BegalRushEngine {
     }
     if (justPoliceUlt && this.policeUltCharges > 0 && this.policeRaidTimer <= 0) {
       this.activatePoliceUlt();
+      this.callbacks.onLocalAction?.('police_ult');
     }
 
     // Advance Player Along -Z
@@ -1255,6 +1303,7 @@ export class BegalRushEngine {
     this.updateBegalPickup(dt);
     this.updatePoliceRaid(dt);
     this.updateProjectiles(dt);
+    this.updateRemotePlayers(dt);
     this.updateParticles(dt);
 
     // Chase Camera (adapts FOV & pullback smoothly for mobile portrait screens)
@@ -3352,6 +3401,314 @@ export class BegalRushEngine {
     });
   }
 
+  public getMultiplayerTelemetry(): PlayerTelemetryPayload {
+    return {
+      x: this.playerX,
+      y: this.playerY,
+      z: this.playerZ,
+      speed: this.playerSpeed,
+      lean: this.playerLean,
+      hp: Math.ceil(this.health),
+      maxHp: this.stats.maxHealth,
+      nosActive: this.nosActive,
+      isWheelie: this.wheelieTimer > 0,
+      distanceMeters: this.distanceMeters,
+      enemiesDefeated: this.enemiesDefeated,
+      civiliansSaved: this.civiliansSaved,
+      karmaCap: this.karmaCap,
+    };
+  }
+
+  private drawRemoteRiderLabel(
+    ctx: CanvasRenderingContext2D,
+    canvas: HTMLCanvasElement,
+    name: string,
+    hpRatio: number
+  ): void {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = 'rgba(11, 13, 16, 0.78)';
+    ctx.strokeStyle = 'rgba(250, 204, 21, 0.65)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(6, 6, canvas.width - 12, canvas.height - 12, 12);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = 'bold 22px Rajdhani, Inter, sans-serif';
+    ctx.fillStyle = '#f8fafc';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(name.slice(0, 16), canvas.width / 2, 24);
+
+    const barW = canvas.width - 40;
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
+    ctx.fillRect(20, 42, barW, 8);
+    ctx.fillStyle = hpRatio > 0.5 ? '#34d399' : hpRatio > 0.25 ? '#fbbf24' : '#f43f5e';
+    ctx.fillRect(20, 42, Math.max(0, Math.min(1, hpRatio)) * barW, 8);
+  }
+
+  public syncRemotePlayers(players: RoomPlayerInfo[], localPlayerId: string | null): void {
+    const activeIds = new Set<string>();
+    for (const p of players) {
+      if (p.id === localPlayerId) continue;
+      activeIds.add(p.id);
+
+      const hpRatio = Math.max(0, Math.min(1, p.hp / Math.max(1, p.maxHp)));
+      const existing = this.remotePlayers.get(p.id);
+      if (
+        existing &&
+        existing.bikeId === p.bikeId &&
+        existing.meleeId === p.meleeId &&
+        existing.rangedId === p.rangedId
+      ) {
+        if (existing.alive && !p.alive) {
+          this.spawnParticles(existing.x, 0.9, existing.z, 0xef4444, 20, 7);
+        }
+        existing.targetX = p.x;
+        existing.targetY = p.y;
+        existing.targetZ = p.z;
+        existing.speed = p.speed;
+        existing.lean = p.lean;
+        existing.nosActive = p.nosActive;
+        existing.isWheelie = p.isWheelie;
+        existing.alive = p.alive;
+        if (existing.name !== p.name || Math.abs(existing.lastHpRatio - hpRatio) > 0.03) {
+          existing.name = p.name;
+          existing.lastHpRatio = hpRatio;
+          this.drawRemoteRiderLabel(
+            existing.labelCtx,
+            existing.labelCanvas,
+            p.name,
+            hpRatio
+          );
+          existing.labelTexture.needsUpdate = true;
+        }
+        continue;
+      }
+
+      if (existing) {
+        this.removeRemoteRiderVisual(existing);
+        this.remotePlayers.delete(p.id);
+      }
+
+      const bikeCfg = getBikeById(p.bikeId);
+      const rig = createMotorcycleModel({
+        primaryColor: bikeCfg.primaryColor,
+        accentColor: bikeCfg.accentColor,
+        frameColor: bikeCfg.frameColor,
+        bikeId: p.bikeId,
+        meleeWeapon: p.meleeId,
+        rangedWeapon: p.rangedId,
+        isEnemy: false,
+        textures: this.textures,
+      });
+
+      const labelCanvas = document.createElement('canvas');
+      labelCanvas.width = 256;
+      labelCanvas.height = 64;
+      const labelCtx = labelCanvas.getContext('2d')!;
+      this.drawRemoteRiderLabel(labelCtx, labelCanvas, p.name, hpRatio);
+      const labelTexture = new THREE.CanvasTexture(labelCanvas);
+      const labelMat = new THREE.SpriteMaterial({
+        map: labelTexture,
+        transparent: true,
+        depthWrite: false,
+      });
+      const labelSprite = new THREE.Sprite(labelMat);
+      labelSprite.position.set(0, 2.25, 0);
+      labelSprite.scale.set(2.4, 0.6, 1);
+      rig.root.add(labelSprite);
+
+      const empGeo = new THREE.RingGeometry(0.6, 1.0, 24);
+      empGeo.rotateX(-Math.PI / 2);
+      const empRing = new THREE.Mesh(
+        empGeo,
+        new THREE.MeshBasicMaterial({
+          color: 0x38bdf8,
+          transparent: true,
+          opacity: 0.85,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        })
+      );
+      empRing.visible = false;
+      this.scene.add(empRing);
+
+      rig.root.position.set(p.x, p.y, p.z);
+      rig.root.visible = p.alive;
+      this.scene.add(rig.root);
+
+      this.remotePlayers.set(p.id, {
+        id: p.id,
+        name: p.name,
+        bikeId: p.bikeId,
+        meleeId: p.meleeId,
+        rangedId: p.rangedId,
+        rig,
+        labelSprite,
+        labelCanvas,
+        labelCtx,
+        labelTexture,
+        empRing,
+        lastHpRatio: hpRatio,
+        x: p.x,
+        y: p.y,
+        z: p.z,
+        targetX: p.x,
+        targetY: p.y,
+        targetZ: p.z,
+        speed: p.speed,
+        lean: p.lean,
+        nosActive: p.nosActive,
+        isWheelie: p.isWheelie,
+        alive: p.alive,
+        armSwingTimer: 0,
+        empAnimTimer: 0,
+      });
+    }
+
+    for (const [id, visual] of this.remotePlayers.entries()) {
+      if (!activeIds.has(id)) {
+        this.removeRemoteRiderVisual(visual);
+        this.remotePlayers.delete(id);
+      }
+    }
+  }
+
+  public triggerRemoteAction(playerId: string, action: PlayerActionKind, playerName?: string): void {
+    const r = this.remotePlayers.get(playerId);
+    if (!r) return;
+    if (action === 'attack') {
+      r.armSwingTimer = 0.28;
+      this.spawnParticles(r.x, r.y + 0.9, r.z - 0.5, 0xfacc15, 8, 4.5);
+    } else if (action === 'ranged') {
+      this.spawnParticles(r.x, r.y + 1.0, r.z - 1.2, 0x38bdf8, 8, 6);
+    } else if (action === 'emp') {
+      r.empAnimTimer = 0.45;
+      r.empRing.visible = true;
+      r.empRing.position.set(r.x, 0.25, r.z);
+      this.spawnParticles(r.x, r.y + 0.7, r.z, 0x38bdf8, 12, 5.5);
+    } else if (action === 'horn') {
+      this.spawnParticles(r.x, r.y + 1.4, r.z, 0xfef08a, 6, 3);
+    } else if (action === 'police_ult') {
+      this.spawnParticles(r.x, r.y + 1.3, r.z, 0x38bdf8, 16, 7);
+      if (playerName) {
+        this.setBanner(`${playerName} PANGGIL RAZIYA POLISI!`, 2.0);
+      }
+    }
+  }
+
+  public clearRemotePlayers(): void {
+    for (const visual of this.remotePlayers.values()) {
+      this.removeRemoteRiderVisual(visual);
+    }
+    this.remotePlayers.clear();
+  }
+
+  private removeRemoteRiderVisual(visual: RemoteRiderVisual): void {
+    this.scene.remove(visual.rig.root);
+    this.scene.remove(visual.empRing);
+    visual.labelTexture.dispose();
+    (visual.labelSprite.material as THREE.SpriteMaterial).dispose();
+    visual.empRing.geometry.dispose();
+    (visual.empRing.material as THREE.MeshBasicMaterial).dispose();
+  }
+
+  private updateRemotePlayers(dt: number): void {
+    for (const r of this.remotePlayers.values()) {
+      r.rig.root.visible = r.alive;
+      if (!r.alive) {
+        r.empRing.visible = false;
+        continue;
+      }
+
+      // Predict ahead slightly using remote rider speed, then damp smoothly
+      r.targetZ -= r.speed * dt;
+      r.x = THREE.MathUtils.damp(r.x, r.targetX, 14, dt);
+      r.y = THREE.MathUtils.damp(r.y, r.targetY, 16, dt);
+      r.z = THREE.MathUtils.damp(r.z, r.targetZ, 12, dt);
+
+      r.rig.root.position.set(r.x, r.y, r.z);
+      const pitch = r.isWheelie ? 0.34 : r.nosActive ? 0.06 : 0;
+      r.rig.chassisGroup.rotation.set(pitch, 0, r.lean);
+
+      const wheelSpin = (r.speed / 0.33) * dt;
+      r.rig.frontWheel.rotation.x -= wheelSpin;
+      r.rig.rearWheel.rotation.x -= wheelSpin;
+      r.rig.nosGlowLeft.visible = r.nosActive;
+      r.rig.nosGlowRight.visible = r.nosActive;
+
+      if (r.armSwingTimer > 0) {
+        r.armSwingTimer -= dt;
+      }
+      if (r.rig.weaponArm) {
+        const yaw = r.armSwingTimer > 0 ? Math.sin(r.armSwingTimer * 28) * 1.4 : 0;
+        r.rig.weaponArm.rotation.y = THREE.MathUtils.damp(r.rig.weaponArm.rotation.y, yaw, 18, dt);
+      }
+
+      if (r.empAnimTimer > 0) {
+        r.empAnimTimer -= dt;
+        const progress = 1 - r.empAnimTimer / 0.45;
+        r.empRing.position.set(r.x, 0.25, r.z);
+        r.empRing.scale.setScalar(1 + progress * 7.5);
+        (r.empRing.material as THREE.MeshBasicMaterial).opacity = (1 - progress) * 0.85;
+        if (r.empAnimTimer <= 0) r.empRing.visible = false;
+      }
+
+      // Friendly side-by-side brush physics with local player
+      if (this.screenMode === 'playing') {
+        const dx = this.playerX - r.x;
+        const dz = this.playerZ - r.z;
+        const dy = Math.abs(this.playerY - r.y);
+        if (Math.abs(dx) < 1.1 && Math.abs(dz) < 1.95 && dy < 1.1) {
+          const pushDir = dx >= 0 ? 1 : -1;
+          this.playerX = THREE.MathUtils.clamp(
+            this.playerX + pushDir * 5.2 * dt,
+            -ROAD_HALF_WIDTH,
+            ROAD_HALF_WIDTH
+          );
+          if (Math.random() < 0.35) {
+            this.spawnParticles((this.playerX + r.x) * 0.5, 0.7, r.z, 0xfacc15, 2, 3);
+          }
+        }
+      }
+    }
+  }
+
+  private updateSpectate(dt: number): void {
+    this.updateRemotePlayers(dt);
+    this.updateParticles(dt);
+
+    let targetRider: RemoteRiderVisual | null = null;
+    for (const r of this.remotePlayers.values()) {
+      if (!r.alive) continue;
+      if (!targetRider || r.z < targetRider.z) {
+        targetRider = r;
+      }
+    }
+
+    const focusX = targetRider ? targetRider.x : this.playerX;
+    const focusY = targetRider ? targetRider.y : 0;
+    const focusZ = targetRider ? targetRider.z : (this.playerZ -= 18 * dt);
+
+    this.playerZ = focusZ;
+    this.repositionRoadSegments(focusZ);
+
+    const camTargetX = focusX * 0.68;
+    const camTargetY = 2.8 + focusY * 0.4;
+    const camTargetZ = focusZ + 6.4;
+
+    this.camera.position.x = THREE.MathUtils.damp(this.camera.position.x, camTargetX, 6, dt);
+    this.camera.position.y = THREE.MathUtils.damp(this.camera.position.y, camTargetY, 6, dt);
+    this.camera.position.z = THREE.MathUtils.damp(this.camera.position.z, camTargetZ, 8, dt);
+
+    _vec3.set(focusX * 0.78, focusY + 1.0, focusZ - 9.0);
+    this.camera.lookAt(_vec3);
+    this.keyLight.position.set(focusX + 16, 26, focusZ + 12);
+    this.keyLight.target.position.set(focusX, 0, focusZ - 12);
+    audioEngine.updateEngine(0, false, true);
+  }
+
   public dispose(): void {
     this.disposed = true;
     cancelAnimationFrame(this.frameId);
@@ -3360,6 +3717,7 @@ export class BegalRushEngine {
     window.removeEventListener('orientationchange', this.handleResize);
     window.visualViewport?.removeEventListener('resize', this.handleResize);
     audioEngine.stopEngine();
+    this.clearRemotePlayers();
 
     const canvas = this.renderer.domElement;
     canvas.removeEventListener('webglcontextlost', this.handleContextLost);
